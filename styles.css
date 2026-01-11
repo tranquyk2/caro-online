@@ -1,3 +1,15 @@
+/* Hiệu ứng gợi ý AI */
+.cell.ai-suggest {
+    background: #00e676 !important;
+    box-shadow: 0 0 0 2px #00c853, 0 0 12px #00e676;
+    animation: pulse 1s infinite;
+    z-index: 3;
+}
+
+body.dark-mode .cell.ai-suggest {
+    background: #00bfae !important;
+    box-shadow: 0 0 0 2px #00bfae, 0 0 12px #00bfae;
+}
 /* Highlight ô vừa đánh */
 .cell.last-move {
     background: #ffd700 !important;
