@@ -1,0 +1,179 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Caro Online Firebase</title>
+
+  <link rel="stylesheet" href="styles.css">
+
+  <!-- Firebase v8 (KHÔNG import) -->
+  <script src="https://www.gstatic.com/firebasejs/8.10.0/firebase-app.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/8.10.0/firebase-database.js"></script>
+</head>
+<body>
+
+<div class="container">
+  <div class="header-section">
+    <h1>🎮 Caro Online</h1>
+    <label class="dark-mode-toggle">
+      <input type="checkbox" id="darkModeToggle" onchange="toggleDarkMode()">
+      <span class="toggle-slider">🌙</span>
+    </label>
+  </div>
+
+  <div class="player-name-section">
+    <input id="playerNameInput" placeholder="Tên của bạn" type="text" class="player-name-input">
+    <button onclick="updatePlayerName()" class="btn btn-small">💾 Lưu tên</button>
+  </div>
+
+  <div class="controls">
+    <input id="roomInput" placeholder="Nhập mã phòng" type="text">
+    <div class="button-group">
+      <button onclick="createRoom()" class="btn btn-primary">➕ Tạo phòng</button>
+      <button onclick="joinRoom()" class="btn btn-secondary">🚪 Vào phòng</button>
+      <button onclick="showRoomList()" class="btn btn-info">📋 Danh sách phòng</button>
+      <button onclick="leaveRoom()" class="btn btn-danger" id="leaveRoomBtn" style="display: none;">🚪 Rời phòng</button>
+      <button onclick="rejoinRoom()" class="btn btn-warning" id="rejoinRoomBtn" style="display: none;">↩️ Vào lại phòng</button>
+    </div>
+  </div>
+
+  <div id="status" class="status">Chưa vào phòng</div>
+
+  <div class="game-layout">
+    <!-- Bên trái: Thông tin người chơi và thống kê -->
+    <div class="left-panel" id="leftPanel" style="display: none;">
+      <div class="panel-header">👥 Thông tin người chơi</div>
+      
+      <div class="players-stats">
+        <!-- Người chơi 1 -->
+        <div class="player-stat-card" id="player1StatCard">
+          <div class="stat-header">
+            <div class="stat-player-name" id="player1Name">Người chơi 1</div>
+            <div class="stat-symbol" id="player1Symbol">X</div>
+          </div>
+          <div class="stat-body">
+            <div class="stat-item">
+              <span class="stat-label">🏆 Thắng:</span>
+              <span class="stat-value" id="player1Wins">0</span>
+            </div>
+            <div class="stat-item">
+              <span class="stat-label">😢 Thua:</span>
+              <span class="stat-value" id="player1Losses">0</span>
+            </div>
+            <div class="stat-item">
+              <span class="stat-label">📊 Tỷ lệ:</span>
+              <span class="stat-value" id="player1Ratio">0%</span>
+            </div>
+          </div>
+          <div class="stat-indicator" id="player1Indicator"></div>
+        </div>
+
+        <!-- Người chơi 2 -->
+        <div class="player-stat-card" id="player2StatCard">
+          <div class="stat-header">
+            <div class="stat-player-name" id="player2Name">Người chơi 2</div>
+            <div class="stat-symbol" id="player2Symbol">O</div>
+          </div>
+          <div class="stat-body">
+            <div class="stat-item">
+              <span class="stat-label">🏆 Thắng:</span>
+              <span class="stat-value" id="player2Wins">0</span>
+            </div>
+            <div class="stat-item">
+              <span class="stat-label">😢 Thua:</span>
+              <span class="stat-value" id="player2Losses">0</span>
+            </div>
+            <div class="stat-item">
+              <span class="stat-label">📊 Tỷ lệ:</span>
+              <span class="stat-value" id="player2Ratio">0%</span>
+            </div>
+          </div>
+          <div class="stat-indicator" id="player2Indicator"></div>
+        </div>
+      </div>
+
+      <div class="game-info-panel">
+        <div class="info-panel-item">
+          <div class="info-icon">⏱️</div>
+          <div class="info-content">
+            <div class="info-label">Thời gian</div>
+            <div id="timer" class="info-value">00:00</div>
+          </div>
+        </div>
+        <div class="info-panel-item">
+          <div class="info-icon">📊</div>
+          <div class="info-content">
+            <div class="info-label">Nước đi</div>
+            <div id="moveCount" class="info-value">0</div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Giữa: Bàn cờ -->
+    <div class="center-panel">
+      <div id="board"></div>
+      <button onclick="resetGame()" class="btn btn-reset" id="resetBtn" style="display: none;">🔄 Chơi lại</button>
+    </div>
+
+    <!-- Bên phải: Chat -->
+    <div class="right-panel" id="rightPanel" style="display: none;">
+      <div class="chat-section">
+        <div class="chat-header">💬 Chat</div>
+        <div id="chatMessages" class="chat-messages"></div>
+        <div class="emoji-reactions">
+          <button onclick="sendEmoji('👍')" class="emoji-btn" title="Thích">👍</button>
+          <button onclick="sendEmoji('❤️')" class="emoji-btn" title="Yêu thích">❤️</button>
+          <button onclick="sendEmoji('😂')" class="emoji-btn" title="Cười">😂</button>
+          <button onclick="sendEmoji('😮')" class="emoji-btn" title="Ngạc nhiên">😮</button>
+          <button onclick="sendEmoji('😢')" class="emoji-btn" title="Buồn">😢</button>
+          <button onclick="sendEmoji('🔥')" class="emoji-btn" title="Tuyệt vời">🔥</button>
+          <button onclick="sendEmoji('👏')" class="emoji-btn" title="Vỗ tay">👏</button>
+          <button onclick="sendEmoji('🎉')" class="emoji-btn" title="Chúc mừng">🎉</button>
+        </div>
+        <div class="chat-input-group">
+          <input id="chatInput" type="text" placeholder="Nhập tin nhắn..." class="chat-input">
+          <button onclick="sendChatMessage()" class="btn btn-small">📤</button>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- Modal Mã Phòng -->
+<div id="roomCodeModal" class="modal">
+  <div class="modal-content">
+    <span class="close" onclick="closeRoomCodeModal()">&times;</span>
+    <h2>🎮 Mã Phòng</h2>
+    <div class="room-code-display">
+      <span id="roomCodeText" class="room-code">XXXXXX</span>
+    </div>
+    <p>Chia sẻ mã này cho người chơi 2</p>
+    <button onclick="copyRoomCode()" class="btn btn-primary" id="copyBtn">📋 Copy mã</button>
+  </div>
+</div>
+
+<!-- Modal Danh Sách Phòng -->
+<div id="roomListModal" class="modal">
+  <div class="modal-content room-list-content">
+    <span class="close" onclick="closeRoomListModal()">&times;</span>
+    <h2>📋 Danh Sách Phòng</h2>
+    <button onclick="loadRoomList()" class="btn btn-small" style="margin-bottom: 10px;">🔄 Làm mới</button>
+    <div id="roomList" class="room-list"></div>
+  </div>
+</div>
+
+<!-- Modal Kết Quả Game -->
+<div id="gameResultModal" class="modal game-result">
+  <div class="modal-content result-content">
+    <div id="resultIcon" class="result-icon">🎉</div>
+    <h2 id="resultText" class="result-text">BẠN ĐÃ THẮNG!</h2>
+    <button onclick="resetGame(); hideGameResult();" class="btn btn-primary btn-large">🔄 Chơi lại</button>
+    <button onclick="hideGameResult()" class="btn btn-secondary btn-large">✖️ Đóng</button>
+  </div>
+</div>
+
+<script src="game.js"></script>
+</body>
+</html>
