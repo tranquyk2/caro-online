@@ -1,3 +1,345 @@
+// ================= AI SUGGESTION =================
+let aiClickCount = 0;
+let aiActive = false;
+let aiSuggestedMove = null;
+let aiContinuousMode = false; // Chế độ gợi ý liên tục
+
+function setupPlayerNameAITrigger() {
+  // Dùng event delegation để tránh vấn đề với dynamic elements
+  document.addEventListener("click", function(e) {
+    const nameDiv = e.target.closest("#player1Name");
+    if (!nameDiv) return;
+    
+    aiClickCount++;
+    console.log("🤖 AI Click count: " + aiClickCount); // Debug
+    
+    if (aiClickCount >= 3) {
+      aiClickCount = 0;
+      aiContinuousMode = !aiContinuousMode; // Toggle chế độ liên tục
+      console.log("🤖 AI Mode: " + (aiContinuousMode ? "✅ BẬT" : "❌ TẮT")); // Debug
+      
+      if (aiContinuousMode) {
+        console.log("🤖 AI Gợi ý bắt đầu!");
+        suggestAIMove(); // Gợi ý ngay khi bật
+      } else {
+        // Tắt chế độ: xóa highlight hiện tại
+        console.log("🤖 AI Gợi ý dừng!");
+        if (aiSuggestedMove !== null) {
+          const cells = document.querySelectorAll("#board .cell");
+          if (cells[aiSuggestedMove]) {
+            cells[aiSuggestedMove].classList.remove("ai-suggest");
+          }
+          aiSuggestedMove = null;
+        }
+        aiActive = false;
+      }
+    }
+  });
+}
+
+// Gọi hàm này sau khi cập nhật tên người chơi
+document.addEventListener("DOMContentLoaded", setupPlayerNameAITrigger);
+setupPlayerNameAITrigger(); // Gọi ngay để đảm bảo event listener được đăng ký
+
+// Hàm gợi ý nước đi mạnh nhất - Highlight cho đến khi người dùng đánh
+function suggestAIMove() {
+  if (!roomId || !mySymbol) {
+    aiActive = false;
+    return;
+  }
+  
+  // Lấy dữ liệu từ Firebase để đảm bảo trạng thái đúng
+  const ref = db.ref("rooms/" + roomId);
+  ref.once("value").then(snap => {
+    const data = snap.val();
+    if (!data || !data.board) {
+      aiActive = false;
+      return;
+    }
+    
+    // Tìm nước đi tốt nhất dựa trên trạng thái thực từ Firebase
+    const bestMove = findBestMove(data.board, mySymbol);
+    if (bestMove !== null && bestMove >= 0) {
+      // Xóa highlight cũ nếu có
+      if (aiSuggestedMove !== null) {
+        const cells = document.querySelectorAll("#board .cell");
+        if (cells[aiSuggestedMove]) {
+          cells[aiSuggestedMove].classList.remove("ai-suggest");
+        }
+      }
+      
+      // Lưu lại ô gợi ý mới
+      aiSuggestedMove = bestMove;
+      // Highlight gợi ý
+      const cells = document.querySelectorAll("#board .cell");
+      cells[bestMove].classList.add("ai-suggest");
+    } else {
+      aiActive = false;
+    }
+  }).catch(error => {
+    console.error("Lỗi lấy dữ liệu:", error);
+    aiActive = false;
+  });
+}
+
+// AI THÔNG MINH NÂNG CẤP: Minimax với Alpha-Beta + Đánh giá chiến lược
+function findBestMove(board, symbol) {
+  const opponent = symbol === "X" ? "O" : "X";
+  
+  // Kiểm tra nước đi cấp bách (chặn đối thủ hoặc tấn công)
+  const urgentMove = findUrgentMove(board, symbol, opponent);
+  if (urgentMove !== null) {
+    return urgentMove;
+  }
+  
+  let bestScore = -Infinity;
+  let move = null;
+  const availableMoves = getAvailableMoves(board);
+  
+  // Ưu tiên những ô gần các quân cờ đã đánh
+  const priorityMoves = availableMoves.sort((a, b) => {
+    return evaluatePosition(board, b, symbol) - evaluatePosition(board, a, symbol);
+  }).slice(0, Math.min(availableMoves.length, 10));
+  
+  for (const i of priorityMoves) {
+    board[i] = symbol;
+    const score = minimax(board, 4, false, symbol, opponent, -Infinity, Infinity);
+    board[i] = "";
+    if (score > bestScore) {
+      bestScore = score;
+      move = i;
+    }
+  }
+  
+  return move;
+}
+
+// Tìm nước đi cấp bách (ưu tiên TẤN CÔNG trước, rồi mới PHÒNG THỦ)
+function findUrgentMove(board, symbol, opponent) {
+  const size = BOARD_SIZE;
+  
+  // ƯUTIÊN 1: Kiểm tra xem bản thân có sắp thắng không (4 liên tiếp) -> TẤN CÔNG
+  for (let i = 0; i < board.length; i++) {
+    if (board[i] === "") {
+      board[i] = symbol;
+      if (checkWinner(board)) {
+        board[i] = "";
+        return i; // THẮNG NGAY! TẤN CÔNG
+      }
+      board[i] = "";
+    }
+  }
+  
+  // ƯUTIÊN 2: Kiểm tra xem bản thân có 4 liên tiếp không (sắp thắng lần tới)
+  for (let i = 0; i < board.length; i++) {
+    if (board[i] === "") {
+      board[i] = symbol;
+      if (hasFourInRow(board, i, symbol)) {
+        board[i] = "";
+        return i; // TẤN CÔNG ĐẠT 4 LIÊN TIẾP
+      }
+      board[i] = "";
+    }
+  }
+  
+  // ƯUTIÊN 3: Mới phòng thủ - chặn đối thủ khi sắp thắng (4 liên tiếp)
+  for (let i = 0; i < board.length; i++) {
+    if (board[i] === "") {
+      board[i] = opponent;
+      if (hasFourInRow(board, i, opponent)) {
+        board[i] = "";
+        return i; // CHẶN NGAY nếu đối thủ có 4 liên tiếp
+      }
+      board[i] = "";
+    }
+  }
+  
+  // ƯUTIÊN 4: Chặn nước thắng của đối thủ
+  for (let i = 0; i < board.length; i++) {
+    if (board[i] === "") {
+      board[i] = opponent;
+      if (checkWinner(board)) {
+        board[i] = "";
+        return i; // Chặn nước thắng của đối thủ
+      }
+      board[i] = "";
+    }
+  }
+  
+  return null;
+}
+
+// Kiểm tra có 4 liên tiếp (sắp thắng)
+function hasFourInRow(board, lastIndex, symbol) {
+  const size = BOARD_SIZE;
+  const x = lastIndex % size;
+  const y = Math.floor(lastIndex / size);
+  
+  for (const [dx, dy] of [[1,0],[0,1],[1,1],[1,-1]]) {
+    let count = 1;
+    // Kiểm tra một chiều (tối đa 4 bước để phát hiện 4 liên tiếp)
+    for (let step = 1; step <= 4; step++) {
+      const nx = x + dx * step;
+      const ny = y + dy * step;
+      if (nx < 0 || nx >= size || ny < 0 || ny >= size) break;
+      const idx = ny * size + nx;
+      if (board[idx] === symbol) count++;
+      else break;
+    }
+    // Kiểm tra chiều ngược lại (tối đa 4 bước)
+    for (let step = 1; step <= 4; step++) {
+      const nx = x - dx * step;
+      const ny = y - dy * step;
+      if (nx < 0 || nx >= size || ny < 0 || ny >= size) break;
+      const idx = ny * size + nx;
+      if (board[idx] === symbol) count++;
+      else break;
+    }
+    if (count >= 4) return true;
+  }
+  return false;
+}
+
+// Lấy danh sách các ô còn trống
+function getAvailableMoves(board) {
+  const moves = [];
+  for (let i = 0; i < board.length; i++) {
+    if (board[i] === "") moves.push(i);
+  }
+  return moves;
+}
+
+// Đánh giá vị trí (độ ưu tiên)
+function evaluatePosition(board, index, symbol) {
+  let score = 0;
+  const size = BOARD_SIZE;
+  const x = index % size;
+  const y = Math.floor(index / size);
+  
+  // Tìm quân gần nhất
+  let minDistance = Infinity;
+  for (let i = 0; i < board.length; i++) {
+    if (board[i] !== "") {
+      const ix = i % size;
+      const iy = Math.floor(i / size);
+      const dist = Math.abs(x - ix) + Math.abs(y - iy);
+      minDistance = Math.min(minDistance, dist);
+    }
+  }
+  
+  // Ưu tiên những ô gần quân cờ
+  if (minDistance <= 3) score += 100 / minDistance;
+  
+  return score;
+}
+
+// Minimax với đánh giá chiến lược
+function minimax(board, depth, isMax, symbol, opponent, alpha, beta) {
+  const winner = checkWinner(board);
+  if (winner === symbol) return 50000 + depth;
+  if (winner === opponent) return -50000 - depth;
+  
+  if (depth === 0) {
+    return evaluateBoard(board, symbol, opponent);
+  }
+  
+  if (board.every(cell => cell !== "")) return 0;
+  
+  if (isMax) {
+    let maxEval = -Infinity;
+    const moves = getAvailableMoves(board).slice(0, 15); // Giới hạn 15 nước để tối ưu tốc độ
+    for (const i of moves) {
+      board[i] = symbol;
+      const eval = minimax(board, depth - 1, false, symbol, opponent, alpha, beta);
+      board[i] = "";
+      maxEval = Math.max(maxEval, eval);
+      alpha = Math.max(alpha, eval);
+      if (beta <= alpha) break;
+    }
+    return maxEval;
+  } else {
+    let minEval = Infinity;
+    const moves = getAvailableMoves(board).slice(0, 15);
+    for (const i of moves) {
+      board[i] = opponent;
+      const eval = minimax(board, depth - 1, true, symbol, opponent, alpha, beta);
+      board[i] = "";
+      minEval = Math.min(minEval, eval);
+      beta = Math.min(beta, eval);
+      if (beta <= alpha) break;
+    }
+    return minEval;
+  }
+}
+
+// Hàm đánh giá bàn cờ (scoring) - TẤN CÔNG MẠNH HƠNPHÒNG THỦ
+function evaluateBoard(board, symbol, opponent) {
+  let score = 0;
+  
+  // Tấn công: tìm những chuỗi của bản thân (trọng số cao)
+  score += countPatterns(board, symbol) * 20;
+  
+  // Phòng thủ: trừ điểm cho chuỗi của đối thủ (trọng số thấp hơn)
+  score -= countPatterns(board, opponent) * 10;
+  
+  return score;
+}
+
+// Đếm các chuỗi nguy hiểm (ưu tiên chuỗi dài)
+function countPatterns(board, symbol) {
+  const size = BOARD_SIZE;
+  let score = 0;
+  
+  for (let i = 0; i < board.length; i++) {
+    if (board[i] === symbol) {
+      for (const [dx, dy] of [[1,0],[0,1],[1,1],[1,-1]]) {
+        let count = 1;
+        for (let step = 1; step < 5; step++) {
+          const x = (i % size) + dx * step;
+          const y = Math.floor(i / size) + dy * step;
+          if (x < 0 || x >= size || y < 0 || y >= size) break;
+          const idx = y * size + x;
+          if (board[idx] === symbol) count++;
+          else break;
+        }
+        
+        // TẤN CÔNG: Ưu tiên cao cho 5 liên tiếp (thắng)
+        if (count >= 5) score += 100000;
+        // Chuỗi 4 liên tiếp (sắp thắng)
+        else if (count === 4) score += 5000;
+        // Chuỗi 3 liên tiếp (đe dọa)
+        else if (count === 3) score += 500;
+        // Chuỗi 2 liên tiếp (tiềm năng)
+        else if (count === 2) score += 50;
+      }
+    }
+  }
+  
+  return score;
+}
+
+// Kiểm tra thắng cho AI (5 liên tiếp)
+function checkWinner(board) {
+  const size = Math.sqrt(board.length);
+  for (let i = 0; i < board.length; i++) {
+    if (board[i] === "") continue;
+    const symbol = board[i];
+    // Kiểm tra 4 hướng
+    for (const [dx, dy] of [[1,0],[0,1],[1,1],[1,-1]]) {
+      let count = 1;
+      for (let step = 1; step < 5; step++) {
+        const x = (i % size) + dx * step;
+        const y = Math.floor(i / size) + dy * step;
+        if (x < 0 || x >= size || y < 0 || y >= size) break;
+        const idx = y * size + x;
+        if (board[idx] === symbol) count++;
+        else break;
+      }
+      if (count >= 5) return symbol;
+    }
+  }
+  return null;
+}
 // ================= FIREBASE CONFIG =================
 firebase.initializeApp({
     apiKey: "AIzaSyDeB-_Frk6I0Wiz_iU00BVhQCj1WUq07Ho",
@@ -502,6 +844,11 @@ firebase.initializeApp({
           statusText.innerText = isMyTurn 
             ? "👉 Lượt của bạn (" + symbolText + ")" 
             : "⏳ Đợi đối thủ...";
+          
+          // Nếu chế độ liên tục bật và đến lượt của bạn, gợi ý liên tục
+          if (aiContinuousMode && isMyTurn) {
+            suggestAIMove();
+          }
         } else {
           statusText.innerText = "Đang chờ người chơi...";
         }
@@ -521,6 +868,15 @@ firebase.initializeApp({
     if (!roomId || !mySymbol) {
       alert("Vui lòng tạo hoặc vào phòng trước!");
       return;
+    }
+    
+    // Xóa highlight gợi ý AI khi người dùng đánh
+    if (aiSuggestedMove !== null) {
+      const cells = document.querySelectorAll("#board .cell");
+      if (cells[aiSuggestedMove]) {
+        cells[aiSuggestedMove].classList.remove("ai-suggest");
+      }
+      aiSuggestedMove = null;
     }
     
     const ref = db.ref("rooms/" + roomId);
@@ -866,6 +1222,9 @@ firebase.initializeApp({
           }
         }
       }
+      
+      // Đăng ký event listener cho AI sau khi cập nhật player info
+      setupPlayerNameAITrigger();
       
       updatePlayerStats();
     });
