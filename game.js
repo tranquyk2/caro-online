@@ -272,26 +272,22 @@ firebase.initializeApp({
   }
   
   // ================= VẼ BÀN CỜ =================
-  function renderBoard(board) {
+  // Hàm vẽ bàn cờ, thêm lastMoveIndex để highlight ô vừa đánh
+  function renderBoard(board, lastMoveIndex) {
     if (!boardDiv) {
       console.error("Không tìm thấy phần tử board!");
       return;
     }
-    
     boardDiv.innerHTML = "";
     boardDiv.style.gridTemplateColumns = `repeat(${BOARD_SIZE}, 1fr)`;
-    
-    // Đảm bảo board có đủ số ô
     const totalCells = BOARD_SIZE * BOARD_SIZE;
     const boardArray = Array.isArray(board) && board.length === totalCells 
       ? board 
       : Array(totalCells).fill("");
-    
     boardArray.forEach((cell, i) => {
       const div = document.createElement("div");
       div.className = "cell";
       div.dataset.index = i;
-      
       if (cell === "X") {
         div.innerHTML = '<span class="stone stone-x">X</span>';
         div.classList.add("occupied");
@@ -299,7 +295,10 @@ firebase.initializeApp({
         div.innerHTML = '<span class="stone stone-o">O</span>';
         div.classList.add("occupied");
       }
-      
+      // Highlight ô vừa đánh
+      if (lastMoveIndex !== undefined && i === lastMoveIndex) {
+        div.classList.add("last-move");
+      }
       div.onclick = () => {
         if (roomId && mySymbol) {
           play(i);
@@ -457,7 +456,7 @@ firebase.initializeApp({
       // Đảm bảo board luôn được render
       const totalCells = BOARD_SIZE * BOARD_SIZE;
       if (data.board && Array.isArray(data.board) && data.board.length === totalCells) {
-        renderBoard(data.board);
+        renderBoard(data.board, data.lastMoveIndex);
       } else {
         // Nếu board chưa có, tạo board mới
         const emptyBoard = Array(totalCells).fill("");
@@ -559,7 +558,8 @@ firebase.initializeApp({
       const updateData = {
         board: newBoard,
         turn: newTurn,
-        moveCount: newMoveCount
+        moveCount: newMoveCount,
+        lastMoveIndex: index
       };
       
       if (win && win.winner) {
