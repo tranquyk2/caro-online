@@ -1,3 +1,14 @@
+/* Highlight ô vừa đánh */
+.cell.last-move {
+    background: #ffd700 !important;
+    box-shadow: 0 0 0 2px #e6b800, 0 0 8px #ffd700;
+    z-index: 2;
+}
+
+body.dark-mode .cell.last-move {
+    background: #ff9800 !important;
+    box-shadow: 0 0 0 2px #ff9800, 0 0 8px #ff9800;
+}
 * {
     margin: 0;
     padding: 0;
